@@ -5,7 +5,7 @@
 <h1 align="center">Cartridge</h1>
 
 <p align="center">
-  Your retro library, on your Mac, from the couch.<br>
+  Your Mac. Its console era.<br>
   NES, SNES, Genesis, N64, PlayStation and the original Xbox, played entirely from a PS5 DualSense over Bluetooth.
 </p>
 
