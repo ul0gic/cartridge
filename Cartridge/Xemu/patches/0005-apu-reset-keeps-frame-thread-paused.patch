@@ -1,0 +1,22 @@
+diff --git a/hw/xbox/mcpx/apu/apu.c b/hw/xbox/mcpx/apu/apu.c
+index 1ee6dc4..6251860 100644
+--- a/hw/xbox/mcpx/apu/apu.c
++++ b/hw/xbox/mcpx/apu/apu.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-05. */
+ /*
+  * QEMU MCPX Audio Processing Unit implementation
+  *
+@@ -337,7 +338,11 @@ static void mcpx_apu_reset_hold(Object *obj, ResetType type)
+     qemu_mutex_lock(&d->lock);
+     mcpx_apu_wait_for_idle(d);
+     mcpx_apu_reset_locked(d);
+-    mcpx_apu_resume(d);
++    /* The frame thread runs the DSP cores as they are; after a reset while the VM is stopped (-S boot,
++     * snapshot load) they hold unprogrammed memory until vm_start syncs them, so it stays paused until then. */
++    if (runstate_is_running()) {
++        mcpx_apu_resume(d);
++    }
+     qemu_mutex_unlock(&d->lock);
+     bql_lock();
+ }

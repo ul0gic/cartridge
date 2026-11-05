@@ -1,0 +1,37 @@
+diff --git a/system/vl.c b/system/vl.c
+index f0c5c97..ceb4162 100644
+--- a/system/vl.c
++++ b/system/vl.c
+@@ -3092,12 +3092,30 @@ void qemu_init(int argc, char **argv)
+         }
+     }
+ 
++    const char *dvd_offset = NULL;
++    for (int i = 1; i < argc; i++) {
++        if (argv[i] && strcmp(argv[i], "-dvd_offset") == 0) {
++            argv[i] = NULL;
++            if (i < argc - 1 && argv[i+1]) {
++                dvd_offset = argv[i+1];
++                argv[i+1] = NULL;
++            }
++            break;
++        }
++    }
++
+     // Always populate DVD drive. If disc path is the empty string, drive is
+     // connected but no media present.
+     fake_argv[fake_argc++] = strdup("-drive");
+     char *escaped_dvd_path = strdup_double_commas(dvd_path);
+-    fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
+-        escaped_dvd_path);
++    if (dvd_offset != NULL) {
++        fake_argv[fake_argc++] = g_strdup_printf(
++            "index=1,media=cdrom,format=raw,offset=%s,file=%s",
++            dvd_offset, escaped_dvd_path);
++    } else {
++        fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
++            escaped_dvd_path);
++    }
+     free(escaped_dvd_path);
+ 
+     fake_argv[fake_argc++] = strdup("-display");

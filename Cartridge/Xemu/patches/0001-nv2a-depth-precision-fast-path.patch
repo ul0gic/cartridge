@@ -1,0 +1,269 @@
+diff --git a/config_spec.yml b/config_spec.yml
+index c933b54daf5..9c24d11f30d 100644
+--- a/config_spec.yml
++++ b/config_spec.yml
+@@ -237,6 +237,10 @@ display:
+     surface_scale:
+       type: integer
+       default: 1
++    depth_precision:
++      type: enum
++      values: [auto, accurate, fast]
++      default: auto
+   filtering:
+     type: enum
+     values: [linear, nearest]
+diff --git a/hw/xbox/nv2a/pgraph/glsl/geom.c b/hw/xbox/nv2a/pgraph/glsl/geom.c
+index df933fba50a..ffa0f580ceb 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/geom.c
++++ b/hw/xbox/nv2a/pgraph/glsl/geom.c
+@@ -21,8 +21,58 @@
+ 
+ #include "qemu/osdep.h"
+ #include "hw/xbox/nv2a/pgraph/pgraph.h"
++#include "ui/xemu-settings.h"
+ #include "geom.h"
+ 
++/*
++ * Accurate depth interpolation and polygon offset slope need a geometry shader
++ * for every primitive. Geometry shaders are very slow on some platforms (e.g.
++ * macOS OpenGL), so optionally skip the geometry shader for filled, smooth
++ * shaded triangles and derive depth from gl_FragCoord in the fragment shader
++ * instead.
++ */
++bool pgraph_glsl_use_fast_depth(PGRAPHState *pg)
++{
++    switch (g_config.display.quality.depth_precision) {
++    case CONFIG_DISPLAY_QUALITY_DEPTH_PRECISION_ACCURATE:
++        return false;
++    case CONFIG_DISPLAY_QUALITY_DEPTH_PRECISION_FAST:
++        break;
++    default:
++#ifdef __APPLE__
++        if (pg->renderer->type != CONFIG_DISPLAY_RENDERER_OPENGL) {
++            return false;
++        }
++        break;
++#else
++        return false;
++#endif
++    }
++
++    switch (pg->primitive_mode) {
++    case PRIM_TYPE_TRIANGLES:
++    case PRIM_TYPE_TRIANGLE_STRIP:
++    case PRIM_TYPE_TRIANGLE_FAN:
++    case PRIM_TYPE_POLYGON:
++        break;
++    default:
++        return false;
++    }
++
++    uint32_t raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
++    if (GET_MASK(raster, NV_PGRAPH_SETUPRASTER_FRONTFACEMODE) !=
++            NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL ||
++        GET_MASK(raster, NV_PGRAPH_SETUPRASTER_BACKFACEMODE) !=
++            NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL) {
++        return false;
++    }
++
++    /* Flat shading needs the geometry shader for provoking vertex selection */
++    return GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
++                    NV_PGRAPH_CONTROL_3_SHADEMODE) ==
++           NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
++}
++
+ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
+ {
+     state->primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;
+@@ -46,6 +96,8 @@ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
+     state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+ 
++    state->fast_depth = pgraph_glsl_use_fast_depth(pg);
++
+     if (pg->renderer->ops.get_gpu_properties) {
+         GPUProperties *gpu_props = pg->renderer->ops.get_gpu_properties();
+ 
+@@ -86,6 +138,10 @@ bool pgraph_glsl_need_geom(const GeomState *state)
+     assert(state->polygon_front_mode == state->polygon_back_mode);
+     enum ShaderPolygonMode polygon_mode = state->polygon_front_mode;
+ 
++    if (state->fast_depth) {
++        return false;
++    }
++
+     switch (state->primitive_mode) {
+     case PRIM_TYPE_POINTS:
+         return false;
+diff --git a/hw/xbox/nv2a/pgraph/glsl/geom.h b/hw/xbox/nv2a/pgraph/glsl/geom.h
+index a00302f39b6..f9ebfe637ac 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/geom.h
++++ b/hw/xbox/nv2a/pgraph/glsl/geom.h
+@@ -32,6 +32,7 @@ typedef struct {
+     bool smooth_shading;
+     bool first_vertex_is_provoking;
+     bool z_perspective;
++    bool fast_depth;
+     short tri_rot0;
+     short tri_rot1;
+ } GeomState;
+@@ -42,6 +43,8 @@ typedef struct GenGeomGlslOptions {
+ 
+ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);
+ 
++bool pgraph_glsl_use_fast_depth(PGRAPHState *pg);
++
+ bool pgraph_glsl_need_geom(const GeomState *state);
+ 
+ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);
+diff --git a/hw/xbox/nv2a/pgraph/glsl/psh.c b/hw/xbox/nv2a/pgraph/glsl/psh.c
+index 1e12eac98aa..07d9a791034 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/psh.c
++++ b/hw/xbox/nv2a/pgraph/glsl/psh.c
+@@ -29,6 +29,7 @@
+ #include "qemu/osdep.h"
+ #include "hw/xbox/nv2a/debug.h"
+ #include "hw/xbox/nv2a/pgraph/pgraph.h"
++#include "geom.h"
+ #include "psh.h"
+ 
+ DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
+@@ -86,6 +87,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
+                                      NV_PGRAPH_CONTROL_3_SHADEMODE) ==
+                             NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
+ 
++    state->fast_depth = pgraph_glsl_use_fast_depth(pg);
++
+     state->depth_clipping =
+         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_ZCOMPRESSOCCLUDE),
+                  NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
+@@ -976,6 +979,27 @@ static MString* psh_convert(struct PixelShader *ps)
+         );
+ 
+     MString *clip = mstring_new();
++
++    /* Screen-space polygon depth slope for polygon offset. In the fast depth
++     * path there is no geometry shader to compute it, so approximate it with
++     * derivatives, computed here before any non-uniform control flow.
++     */
++    if (!ps->state->fast_depth) {
++        mstring_append(clip, "float depthSlope = triMZ;\n");
++    } else if (ps->state->z_perspective) {
++        mstring_append(
++            clip,
++            "float depthSlope = max(\n"
++            "  abs(dFdx(gl_FragCoord.w)) * float(surfaceScale.x),\n"
++            "  abs(dFdy(gl_FragCoord.w)) * float(surfaceScale.y));\n");
++    } else {
++        mstring_append(
++            clip,
++            "float depthSlope = clipRange.y * max(\n"
++            "  abs(dFdx(gl_FragCoord.z)) * float(surfaceScale.x),\n"
++            "  abs(dFdy(gl_FragCoord.z)) * float(surfaceScale.y));\n");
++    }
++
+     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
+                        ps->state->window_clip_exclusive ? "Exc" : "Inc");
+     if (!ps->state->window_clip_exclusive) {
+@@ -1001,7 +1025,9 @@ static MString* psh_convert(struct PixelShader *ps)
+                              "}\n");
+     }
+ 
+-    if (ps->state->z_perspective) {
++    if (ps->state->z_perspective && ps->state->fast_depth) {
++        mstring_append(clip, "precise float zvalue = 1.0 / gl_FragCoord.w;\n");
++    } else if (ps->state->z_perspective) {
+         mstring_append(
+             clip,
+             "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+@@ -1019,22 +1045,10 @@ static MString* psh_convert(struct PixelShader *ps)
+             "}\n"
+             "bc1 *= inv_bcsum;\n"
+             "bc2 *= inv_bcsum;\n"
+-            "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n"
+-            // If GPU clipping is inaccurate, the point gl_FragCoord.xy might
+-            // be above the horizon of the plane of a rasterized triangle
+-            // making the interpolated w-coordinate above zero or negative. We
+-            // should prevent such wrapping through infinity by clamping to
+-            // infinity.
+-            "if (zvalue > 0.0) {\n"
+-            "  float zslopeofs = depthFactor*triMZ*zvalue*zvalue;\n"
+-            "  zvalue += depthOffset;\n"
+-            "  zvalue += zslopeofs;\n"
+-            "} else {\n"
+-            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+-            "}\n"
+-            "if (isnan(zvalue)) {\n"
+-            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
+-            "}\n");
++            "precise float zvalue = vtxPos0.w + (bc1*(vtxPos1.w - vtxPos0.w) + bc2*(vtxPos2.w - vtxPos0.w));\n");
++    } else if (ps->state->fast_depth) {
++        mstring_append(
++            clip, "precise float zvalue = gl_FragCoord.z * clipRange.y;\n");
+     } else {
+         mstring_append(
+             clip,
+@@ -1050,9 +1064,30 @@ static MString* psh_convert(struct PixelShader *ps)
+             "}\n"
+             "bc1 *= inv_bcsum;\n"
+             "bc2 *= inv_bcsum;\n"
+-            "precise float zvalue = vtxPos0.z + (bc1*(vtxPos1.z - vtxPos0.z) + bc2*(vtxPos2.z - vtxPos0.z));\n"
+-            "zvalue += depthOffset;\n"
+-            "zvalue += depthFactor*triMZ;\n");
++            "precise float zvalue = vtxPos0.z + (bc1*(vtxPos1.z - vtxPos0.z) + bc2*(vtxPos2.z - vtxPos0.z));\n");
++    }
++
++    if (ps->state->z_perspective) {
++        mstring_append(
++            clip,
++            // If GPU clipping is inaccurate, the point gl_FragCoord.xy might
++            // be above the horizon of the plane of a rasterized triangle
++            // making the interpolated w-coordinate above zero or negative. We
++            // should prevent such wrapping through infinity by clamping to
++            // infinity.
++            "if (zvalue > 0.0) {\n"
++            "  float zslopeofs = depthFactor*depthSlope*zvalue*zvalue;\n"
++            "  zvalue += depthOffset;\n"
++            "  zvalue += zslopeofs;\n"
++            "} else {\n"
++            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
++            "}\n"
++            "if (isnan(zvalue)) {\n"
++            "  zvalue = uintBitsToFloat(0x7F7FFFFFu);\n"
++            "}\n");
++    } else {
++        mstring_append(clip, "zvalue += depthOffset;\n"
++                             "zvalue += depthFactor*depthSlope;\n");
+     }
+ 
+     /* Depth clipping */
+diff --git a/hw/xbox/nv2a/pgraph/glsl/psh.h b/hw/xbox/nv2a/pgraph/glsl/psh.h
+index 0c31e807fe4..23a799124f4 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/psh.h
++++ b/hw/xbox/nv2a/pgraph/glsl/psh.h
+@@ -69,6 +69,7 @@ typedef struct PshState {
+     bool smooth_shading;
+     bool depth_clipping;
+     bool z_perspective;
++    bool fast_depth;
+ 
+     unsigned int surface_zeta_format;
+     enum PshDepthFormat depth_format;
+diff --git a/ui/xui/main-menu.cc b/ui/xui/main-menu.cc
+index 85997c1a5ed..1ecfb364492 100644
+--- a/ui/xui/main-menu.cc
++++ b/ui/xui/main-menu.cc
+@@ -763,6 +763,12 @@ void MainMenuDisplayView::Draw()
+                      "Increase surface scaling factor for higher quality")) {
+         nv2a_set_surface_scale_factor(rendering_scale+1);
+     }
++    ChevronCombo("Depth precision", &g_config.display.quality.depth_precision,
++                 "Auto\0"
++                 "Accurate\0"
++                 "Fast\0",
++                 "Fast avoids slow geometry shaders (default on macOS), "
++                 "but may cause depth artifacts");
+ 
+     SectionTitle("Window");
+     bool fs = xemu_is_fullscreen();

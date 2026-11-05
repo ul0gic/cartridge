@@ -1,0 +1,137 @@
+name: Cartridge
+options:
+  bundleIdPrefix: io.corelift
+  deploymentTarget:
+    macOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    ARCHS: arm64
+    MACOSX_DEPLOYMENT_TARGET: "27.0"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: C7X64A66VW
+    CODE_SIGN_IDENTITY: "Developer ID Application"
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_ENABLE_MODULES: YES
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+  configs:
+    Release:
+      OTHER_CODE_SIGN_FLAGS: --timestamp
+targets:
+  Cartridge:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Resources/Database
+          - Resources/Licenses
+          - Resources/Cheats
+      - path: App/Resources/Database
+        type: folder
+        buildPhase: resources
+      - path: App/Resources/Cheats
+        type: folder
+        buildPhase: resources
+      - path: App/Resources/Licenses
+        type: folder
+        buildPhase: resources
+      - path: Shared
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: Cartridge
+        CFBundleDisplayName: Cartridge
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "27.0"
+        LSApplicationCategoryType: public.app-category.games
+        LSSupportsGameMode: true
+        NSHumanReadableCopyright: Copyright © 2026 CORELIFT LLC
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
+    entitlements:
+      path: App/Cartridge.entitlements
+      properties: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.corelift.Cartridge
+        PRODUCT_NAME: Cartridge
+        SWIFT_VERSION: "6.0"
+        SWIFT_OBJC_BRIDGING_HEADER: App/Support/Bridging.h
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: CoreHost
+      - target: XboxHost
+    postBuildScripts:
+      - name: Embed and re-sign cores
+        path: Scripts/embed-cores.sh
+        basedOnDependencyAnalysis: false
+  CoreHost:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - CoreHost
+      - Shared
+    info:
+      path: CoreHost/Info.plist
+      properties:
+        CFBundleName: CoreHost
+        CFBundlePackageType: XPC!
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "27.0"
+        XPCService:
+          ServiceType: Application
+          # Adaptive (the default) backgrounds the helper to priority 4 whenever no message is in flight (xnu task_policy.c:911-913).
+          _ProcessType: Interactive
+    entitlements:
+      path: CoreHost/CoreHost.entitlements
+      properties:
+        com.apple.security.cs.allow-jit: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.corelift.Cartridge.CoreHost
+        PRODUCT_NAME: CoreHost
+        SWIFT_VERSION: "5.0"
+        SWIFT_OBJC_BRIDGING_HEADER: CoreHost/Bridging.h
+        CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+        SWIFT_OPTIMIZATION_LEVEL: -O
+        GCC_OPTIMIZATION_LEVEL: "3"
+  XboxHost:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - XboxHost
+      - Shared
+    info:
+      path: XboxHost/Info.plist
+      properties:
+        CFBundleName: XboxHost
+        CFBundlePackageType: XPC!
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "27.0"
+        XPCService:
+          ServiceType: Application
+          # Adaptive (the default) backgrounds the helper to priority 4 whenever no message is in flight (xnu task_policy.c:911-913).
+          _ProcessType: Interactive
+    entitlements:
+      path: XboxHost/XboxHost.entitlements
+      properties:
+        com.apple.security.cs.allow-jit: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.corelift.Cartridge.XboxHost
+        PRODUCT_NAME: XboxHost
+        SWIFT_VERSION: "5.0"
+        SWIFT_OBJC_BRIDGING_HEADER: XboxHost/Bridging.h
+        SWIFT_OPTIMIZATION_LEVEL: -O
+        # Debug would otherwise gain get-task-allow; the helper carries allow-jit only.
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    postBuildScripts:
+      - name: Embed and sign xemu
+        path: Scripts/embed-xemu.sh
+        basedOnDependencyAnalysis: false

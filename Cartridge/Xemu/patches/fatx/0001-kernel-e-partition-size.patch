@@ -1,0 +1,18 @@
+diff --git a/libfatx/fatx_disk.c b/libfatx/fatx_disk.c
+index 93024ef..0793b5c 100644
+--- a/libfatx/fatx_disk.c
++++ b/libfatx/fatx_disk.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * FATX Filesystem Library
+  *
+@@ -26,7 +27,7 @@ struct fatx_partition_map_entry const fatx_partition_map[] = {
+     { .letter = 'y',    .offset = 0x2ee80000, .size = 0x02ee00000 },
+     { .letter = 'z',    .offset = 0x5dc80000, .size = 0x02ee00000 },
+     { .letter = 'c',    .offset = 0x8ca80000, .size = 0x01f400000 },
+-    { .letter = 'e',    .offset = 0xabe80000, .size = 0x1312d6000 },
++    { .letter = 'e',    .offset = 0xabe80000, .size = 0x131f00000 },
+ 
+     /* Extended (non-retail) partitions commonly used in homebrew */
+     { .letter = 'f',    .offset = 0x1dd156000, .size = -1 },

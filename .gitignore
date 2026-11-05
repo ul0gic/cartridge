@@ -1,0 +1,8 @@
+.build/
+dist/
+Cartridge/Cartridge.xcodeproj/
+.DS_Store
+Cartridge/Cores/*.dylib
+__pycache__/
+Cartridge/Xemu/Products/
+.playwright-mcp/

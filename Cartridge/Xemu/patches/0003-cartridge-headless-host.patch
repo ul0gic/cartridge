@@ -1,0 +1,348 @@
+diff --git a/config_spec.yml b/config_spec.yml
+index 9c24d11..74c714c 100644
+--- a/config_spec.yml
++++ b/config_spec.yml
+@@ -1,3 +1,4 @@
++# Changed by ul0gic for Cartridge on 2026-11-01.
+ general:
+   show_welcome:
+     type: bool
+diff --git a/hw/xbox/eeprom_generation.c b/hw/xbox/eeprom_generation.c
+index f51df73..aff75a9 100644
+--- a/hw/xbox/eeprom_generation.c
++++ b/hw/xbox/eeprom_generation.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * QEMU Xbox EEPROM Generation (MCPX Version 1.0)
+  *
+@@ -22,7 +23,7 @@
+ #include "util/sha1.h"
+ #include "util/rc4.h"
+ 
+-static uint32_t xbox_eeprom_crc(uint8_t *data, size_t len) {
++uint32_t xbox_eeprom_crc(uint8_t *data, size_t len) {
+ 	uint32_t high = 0;
+     uint32_t low = 0;
+ 	for (int i = 0; i < len / 4; i++) {
+diff --git a/hw/xbox/eeprom_generation.h b/hw/xbox/eeprom_generation.h
+index c74e594..fa77de4 100644
+--- a/hw/xbox/eeprom_generation.h
++++ b/hw/xbox/eeprom_generation.h
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * QEMU Xbox EEPROM Generation (MCPX Version 1.0)
+  *
+@@ -55,6 +56,7 @@ typedef enum {
+ } XboxEEPROMVersion;
+ 
+ bool xbox_eeprom_generate(const char *file, XboxEEPROMVersion ver);
++uint32_t xbox_eeprom_crc(uint8_t *data, size_t len);
+ 
+ #endif
+ 
+diff --git a/hw/xbox/mcpx/apu/monitor.c b/hw/xbox/mcpx/apu/monitor.c
+index 730fcc9..4aa64ca 100644
+--- a/hw/xbox/mcpx/apu/monitor.c
++++ b/hw/xbox/mcpx/apu/monitor.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * QEMU MCPX Audio Processing Unit implementation
+  *
+@@ -19,6 +20,12 @@
+ 
+ #include "apu_int.h"
+ 
++#ifdef CARTRIDGE_HOST
++#include "ui/cartridge/cartridge-host.h"
++
++static bool cartridge_pushed;
++#endif
++
+ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
+ {
+     SDL_AudioSpec spec = {
+@@ -76,6 +83,15 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
+     if (d->monitor.stream) {
+         float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
+         SDL_SetAudioStreamGain(d->monitor.stream, vu);
++#ifdef CARTRIDGE_HOST
++        if (cartridge_pushed && runstate_is_running() &&
++            SDL_GetAudioStreamQueued(d->monitor.stream) == 0) {
++            cartridge_host_audio_underrun();
++        }
++        cartridge_host_audio(&d->monitor.frame_buf[0][0],
++                             ARRAY_SIZE(d->monitor.frame_buf));
++        cartridge_pushed = true;
++#endif
+         SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
+                             sizeof(d->monitor.frame_buf));
+     }
+diff --git a/hw/xbox/nv2a/pgraph/glsl/geom.c b/hw/xbox/nv2a/pgraph/glsl/geom.c
+index ffa0f58..cdca82a 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/geom.c
++++ b/hw/xbox/nv2a/pgraph/glsl/geom.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * Geforce NV2A PGRAPH GLSL Shader Generator
+  *
+diff --git a/hw/xbox/nv2a/pgraph/glsl/geom.h b/hw/xbox/nv2a/pgraph/glsl/geom.h
+index f9ebfe6..1da2840 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/geom.h
++++ b/hw/xbox/nv2a/pgraph/glsl/geom.h
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * Geforce NV2A PGRAPH GLSL Shader Generator
+  *
+diff --git a/hw/xbox/nv2a/pgraph/glsl/psh.c b/hw/xbox/nv2a/pgraph/glsl/psh.c
+index 0ad56ca..e1b8f79 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/psh.c
++++ b/hw/xbox/nv2a/pgraph/glsl/psh.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * QEMU Geforce NV2A pixel shader translation
+  *
+diff --git a/hw/xbox/nv2a/pgraph/glsl/psh.h b/hw/xbox/nv2a/pgraph/glsl/psh.h
+index 23a7991..f1a90c5 100644
+--- a/hw/xbox/nv2a/pgraph/glsl/psh.h
++++ b/hw/xbox/nv2a/pgraph/glsl/psh.h
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * Geforce NV2A PGRAPH GLSL Shader Generator
+  *
+diff --git a/hw/xbox/nv2a/pgraph/thirdparty/meson.build b/hw/xbox/nv2a/pgraph/thirdparty/meson.build
+index fbc3751..a1487c8 100644
+--- a/hw/xbox/nv2a/pgraph/thirdparty/meson.build
++++ b/hw/xbox/nv2a/pgraph/thirdparty/meson.build
+@@ -1,3 +1,4 @@
++# Changed by ul0gic for Cartridge on 2026-11-01.
+ nv2a_vsh_cpu_opts = cmake.subproject_options()
+ nv2a_vsh_cpu_opts.add_cmake_defines({
+   'CMAKE_OSX_ARCHITECTURES': cmake_macos_arch,
+@@ -11,8 +12,14 @@ nv2a_vsh_cpu = declare_dependency(include_directories: nv2a_vsh_cpu_subproj.incl
+                                     nv2a_vsh_cpu_subproj.target('nv2a_vsh_disassembler'),
+                                     ])
+ 
+-libgloffscreen = static_library('libgloffscreen',
+-                          sources: files('gloffscreen/common.c', 'gloffscreen/sdl.c'),
+-                          dependencies: sdl)
++if get_option('shared_lib')
++  libgloffscreen = static_library('libgloffscreen',
++                            sources: files('gloffscreen/common.c', 'gloffscreen/cgl.c'),
++                            dependencies: opengl)
++else
++  libgloffscreen = static_library('libgloffscreen',
++                            sources: files('gloffscreen/common.c', 'gloffscreen/sdl.c'),
++                            dependencies: sdl)
++endif
+ gloffscreen = declare_dependency(link_with: libgloffscreen,
+                            include_directories: ['gloffscreen'])
+diff --git a/meson.build b/meson.build
+index 9ca6a68..ff92955 100644
+--- a/meson.build
++++ b/meson.build
+@@ -4610,14 +4610,16 @@ foreach target : target_dirs
+   endforeach
+ 
+   if get_option('shared_lib')
++    cartridge_exports = files('ui/cartridge/cartridge_xemu.exports')
+     lib = shared_library('qemu-' + target,
+                  sources: arch_srcs + genh,
+                  dependencies: arch_deps + [sdl],
+                  objects: objects,
+                  include_directories: target_inc,
+                  c_args: c_args,
+-                 link_depends: [block_syms, qemu_syms],
+-                 link_args: link_args,
++                 link_depends: [block_syms, qemu_syms, cartridge_exports],
++                 link_args: link_args + ['-Wl,-exported_symbols_list,' +
++                                         meson.current_source_dir() / 'ui/cartridge/cartridge_xemu.exports'],
+                  build_by_default: false)
+   else
+     lib = static_library('qemu-' + target,
+diff --git a/ui/meson.build b/ui/meson.build
+index ea46bf0..0cd1a96 100644
+--- a/ui/meson.build
++++ b/ui/meson.build
+@@ -1,3 +1,4 @@
++# Changed by ul0gic for Cartridge on 2026-11-01.
+ system_ss.add(pixman)
+ system_ss.add(png)
+ system_ss.add(files(
+@@ -27,7 +28,6 @@ xemu_ss.add(files(
+   'xemu-settings.cc',
+   'xemu-controllers.cc',
+ 
+-  'xemu.c',
+   'xemu-data.c',
+   'xemu-snapshots.c',
+   'xemu-thumbnail.cc',
+@@ -42,6 +42,34 @@ endif
+ 
+ subdir('xui')
+ 
++if get_option('shared_lib')
++  cartridge_fatx = static_library('cartridge_fatx',
++                                  sources: files(
++                                    'cartridge/libfatx/ext.c',
++                                    'cartridge/libfatx/fatx.c',
++                                    'cartridge/libfatx/fatx_attr.c',
++                                    'cartridge/libfatx/fatx_dev.c',
++                                    'cartridge/libfatx/fatx_dir.c',
++                                    'cartridge/libfatx/fatx_disk.c',
++                                    'cartridge/libfatx/fatx_fat.c',
++                                    'cartridge/libfatx/fatx_file.c',
++                                    'cartridge/libfatx/fatx_log.c',
++                                    'cartridge/libfatx/fatx_misc.c',
++                                    'cartridge/libfatx/fatx_partition.c',
++                                  ),
++                                  c_args: ['-D_FILE_OFFSET_BITS=64'])
++  xemu_ss.add(files(
++    'cartridge/display.c',
++    'cartridge/drives.c',
++    'cartridge/entry.c',
++    'cartridge/input.c',
++  ))
++  xemu_ss.add(declare_dependency(link_with: cartridge_fatx))
++  xemu_ss.add(dependency('appleframeworks', modules: 'IOSurface'))
++else
++  xemu_ss.add(files('xemu.c'))
++endif
++
+ if host_os == 'darwin'
+   xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
+   xemu_ss.add(xemu_cocoa)
+diff --git a/ui/xemu-input.c b/ui/xemu-input.c
+index 4fbc863..1903f27 100644
+--- a/ui/xemu-input.c
++++ b/ui/xemu-input.c
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * xemu Input Management
+  *
+@@ -516,6 +517,10 @@ void xemu_input_update_controller(ControllerState *state)
+         xemu_input_update_sdl_kbd_controller_state(state);
+     } else if (state->type == INPUT_DEVICE_SDL_GAMEPAD) {
+         xemu_input_update_sdl_controller_state(state);
++#ifdef CARTRIDGE_HOST
++    } else if (state->type == INPUT_DEVICE_CARTRIDGE_HOST) {
++        xemu_input_update_cartridge_controller_state(state);
++#endif
+     }
+ 
+     state->last_input_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+diff --git a/ui/xemu-input.h b/ui/xemu-input.h
+index 7023e30..310f6ea 100644
+--- a/ui/xemu-input.h
++++ b/ui/xemu-input.h
+@@ -1,3 +1,4 @@
++/* Changed by ul0gic for Cartridge on 2026-11-01. */
+ /*
+  * xemu Input Management
+  *
+@@ -71,6 +72,7 @@ enum controller_state_axis_index {
+ enum controller_input_device_type {
+     INPUT_DEVICE_SDL_KEYBOARD,
+     INPUT_DEVICE_SDL_GAMEPAD,
++    INPUT_DEVICE_CARTRIDGE_HOST,
+ };
+ 
+ enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_TYPE_COUNT };
+@@ -130,6 +132,7 @@ void xemu_input_update_controllers(void);
+ void xemu_input_update_controller(ControllerState *state);
+ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
+ void xemu_input_update_sdl_controller_state(ControllerState *state);
++void xemu_input_update_cartridge_controller_state(ControllerState *state);
+ void xemu_input_update_rumble(ControllerState *state);
+ ControllerState *xemu_input_get_bound(int index);
+ void xemu_input_bind(int index, ControllerState *state, int save);
+diff --git a/ui/xemu-settings.cc b/ui/xemu-settings.cc
+index 5f9148a..e42d54f 100644
+--- a/ui/xemu-settings.cc
++++ b/ui/xemu-settings.cc
+@@ -1,3 +1,4 @@
++// Changed by ul0gic for Cartridge on 2026-11-01.
+ /*
+  * xemu Settings Management
+  *
+@@ -77,6 +78,11 @@ const char *xemu_settings_get_base_path(void)
+         return base_path;
+     }
+ 
++#ifdef CARTRIDGE_HOST
++    assert(settings_path != NULL);
++    g_autofree char *dir = g_path_get_dirname(settings_path);
++    base_path = g_strdup_printf("%s/", dir);
++#else
+     if (xemu_settings_detect_portable_mode()) {
+         const char *base = SDL_GetBasePath();
+         assert(base != NULL);
+@@ -87,6 +93,7 @@ const char *xemu_settings_get_base_path(void)
+         base_path = g_strdup(base);
+         SDL_free(base);
+     }
++#endif
+     fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
+     return base_path;
+ }
+diff --git a/ui/xui/main-menu.cc b/ui/xui/main-menu.cc
+index 1ecfb36..494c9fb 100644
+--- a/ui/xui/main-menu.cc
++++ b/ui/xui/main-menu.cc
+@@ -1,3 +1,4 @@
++// Changed by ul0gic for Cartridge on 2026-11-01.
+ //
+ // xemu User Interface
+ //
+diff --git a/ui/xui/notifications.cc b/ui/xui/notifications.cc
+index f4c5179..186f209 100644
+--- a/ui/xui/notifications.cc
++++ b/ui/xui/notifications.cc
+@@ -1,3 +1,4 @@
++// Changed by ul0gic for Cartridge on 2026-11-01.
+ //
+ // xemu User Interface
+ //
+@@ -16,11 +17,16 @@
+ // You should have received a copy of the GNU General Public License
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ //
++#include "qemu/osdep.h"
+ #include "notifications.hh"
+ #include "common.hh"
+ 
+ #include "../xemu-notifications.h"
+ 
++#ifdef CARTRIDGE_HOST
++#include "../cartridge/cartridge-host.h"
++#endif
++
+ NotificationManager notification_manager;
+ 
+ NotificationManager::NotificationManager()
+@@ -150,10 +156,18 @@ void NotificationManager::DrawNotification(float t, const char *msg)
+ 
+ void xemu_queue_notification(const char *msg)
+ {
++#ifdef CARTRIDGE_HOST
++    cartridge_host_log(CARTRIDGE_XEMU_LOG_INFO, "%s", msg);
++#else
+     notification_manager.QueueNotification(msg);
++#endif
+ }
+ 
+ void xemu_queue_error_message(const char *msg)
+ {
++#ifdef CARTRIDGE_HOST
++    cartridge_host_log(CARTRIDGE_XEMU_LOG_ERROR, "%s", msg);
++#else
+     notification_manager.QueueError(msg);
++#endif
+ }
